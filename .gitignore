@@ -1,0 +1,13 @@
+.venv/
+.venv-build-windows/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+data/entrada/*
+!data/entrada/.gitkeep
+data/salida/*
+!data/salida/.gitkeep
+documentos base/
+RESUMEN.md
