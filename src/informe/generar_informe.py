@@ -250,8 +250,9 @@ def _verify_template_images_loaded(template_path: Path, workbook) -> None:
 # Convierte distintas hojas de analisis a filas comunes para el informe visual.
 def _observation_rows(sheet, default_report_group="salar"):
     # Convierte hojas de observaciones a una estructura común, aunque cambien encabezados.
-    rows = sheet.iter_rows(values_only=True)
-    header = next(rows, ())
+    rows = sheet.iter_rows()
+    header_cells = next(rows, ())
+    header = tuple(cell.value for cell in header_cells)
     columns = {_norm(value): index for index, value in enumerate(header)
                if value is not None}
 
@@ -295,7 +296,8 @@ def _observation_rows(sheet, default_report_group="salar"):
         "punto reclamo", "punto de reclamo", "punto de reclamo (pr) bdp",
     }
     observations = []
-    for row in rows:
+    for row_cells in rows:
+        row = tuple(cell.value for cell in row_cells)
         category = _cell_value(row, cat_i)
         if not category:
             continue
@@ -356,13 +358,30 @@ def _observation_rows(sheet, default_report_group="salar"):
         cargo = source_cargo or system_cargo
         if normalized_category in {"con acceso temporal", "acceso temporal",
                                    "fin acceso temporal"}:
+            # En las hojas temporales, una celda vacía significa que el cargo
+            # actual no participó en la comparación (por ejemplo, solo estaba
+            # pintada la celda de Cargo Designado). Conservamos el fallback
+            # únicamente para libros antiguos que no tienen esa columna.
             actual_cargo = (_cell_value(row, temp_actual_i)
-                            or system_cargo or source_cargo)
+                            if temp_actual_i is not None
+                            else system_cargo or source_cargo)
             designated_cargo = _cell_value(row, temp_designated_i)
+            seleccion_marcada = False
+            actual_seleccionado = designated_seleccionado = False
+            if (sheet.title.startswith("Temporal ")
+                    and temp_actual_i is not None and temp_designated_i is not None):
+                def esta_pintada(cell):
+                    color = cell.fill.fgColor
+                    return (cell.fill.fill_type == "solid" and color.type == "rgb"
+                            and str(color.rgb).upper().endswith("00FF00"))
+
+                actual_seleccionado = esta_pintada(row_cells[temp_actual_i])
+                designated_seleccionado = esta_pintada(row_cells[temp_designated_i])
+                seleccion_marcada = (actual_seleccionado or designated_seleccionado)
             labeled_cargos = []
-            if actual_cargo:
+            if actual_cargo and (not seleccion_marcada or actual_seleccionado):
                 labeled_cargos.append(f"(Actual) {actual_cargo}")
-            if designated_cargo:
+            if designated_cargo and (not seleccion_marcada or designated_seleccionado):
                 labeled_cargos.append(f"(Designado) {designated_cargo}")
             if labeled_cargos:
                 cargo = "\n".join(labeled_cargos)
@@ -785,7 +804,7 @@ def _wrapped_line_count(value, width):
 # Calcula altura suficiente para que el contenido envuelto sea visible.
 def _fit_observation_row_height(sheet, row):
     lines = 1
-    for col in range(9, 14):
+    for col in range(9, 15):
         cell = sheet.cell(row, col)
         if cell.alignment.wrap_text:
             width = sheet.column_dimensions[cell.column_letter].width
@@ -807,9 +826,13 @@ def _make_system_blocks(sheet, systems):
 
     # Guardar las seis filas de ejemplo (10 a 15) como prototipos de estilo.
     prototype_styles = {
-        row: [copy(sheet.cell(row, col)._style) for col in range(1, 14)]
+        row: [copy(sheet.cell(row, col)._style) for col in range(1, 15)]
         for row in range(10, 16)
     }
+    # La fila prototipo de Accesos Temporales tiene una fuente distinta en
+    # algunas versiones de la plantilla. Tomamos la tipografía de Roles y
+    # mantenemos los rellenos, bordes y alineación propios de cada categoría.
+    standard_fonts = {col: copy(sheet.cell(14, col).font) for col in range(9, 15)}
     prototype_heights = {row: sheet.row_dimensions[row].height for row in range(10, 16)}
 
     if "A8:A9" in {str(merged) for merged in sheet.merged_cells.ranges}:
@@ -825,7 +848,7 @@ def _make_system_blocks(sheet, systems):
 
     # Limpiar las filas de ejemplo y preparar una fila por observación.
     for row in sheet.iter_rows(min_row=10, max_row=9 + total_rows,
-                               min_col=1, max_col=13):
+                               min_col=1, max_col=14):
         for cell in row:
             cell.value = None
 
@@ -840,7 +863,7 @@ def _make_system_blocks(sheet, systems):
             style_row = 10 + (offset % 6)
             if target_row > 15:
                 sheet.row_dimensions[target_row].height = prototype_heights[style_row]
-            for col in range(1, 14):
+            for col in range(1, 15):
                 sheet.cell(target_row, col)._style = copy(prototype_styles[style_row][col - 1])
 
             # El sistema se repite en cada fila para que el filtro de Excel
@@ -860,15 +883,18 @@ def _make_system_blocks(sheet, systems):
                 sheet.cell(target_row, 8).value = len(observations)
             if item:
                 style_row = TYPE_TEMPLATE_ROW[item["type"]]
-                for col in range(9, 14):
+                for col in range(9, 15):
                     cell = sheet.cell(target_row, col)
                     cell._style = copy(prototype_styles[style_row][col - 1])
+                    if item["type"] in {"ACCESO TEMPORAL", "FIN ACCESO TEMPORAL"}:
+                        cell.font = copy(standard_fonts[col])
                 sheet.cell(target_row, 9).value = TYPE_LABEL[item["type"]]
                 sheet.cell(target_row, 10).value = item["login"]
-                sheet.cell(target_row, 11).value = item["cargo"]
-                sheet.cell(target_row, 12).value = item["expected"]
-                sheet.cell(target_row, 13).value = item["found"]
-                for col in range(9, 14):
+                sheet.cell(target_row, 11).value = item["name"]
+                sheet.cell(target_row, 12).value = item["cargo"]
+                sheet.cell(target_row, 13).value = item["expected"]
+                sheet.cell(target_row, 14).value = item["found"]
+                for col in range(9, 15):
                     cell = sheet.cell(target_row, col)
                     alignment = copy(cell.alignment)
                     alignment.wrap_text = True
@@ -883,7 +909,7 @@ def _make_system_blocks(sheet, systems):
                 login_cell.alignment = login_alignment
                 _fit_observation_row_height(sheet, target_row)
             else:
-                for col in range(9, 14):
+                for col in range(9, 15):
                     sheet.cell(target_row, col).fill = PatternFill(fill_type=None)
 
         # El resumen se mantiene combinado por sistema; la columna SISTEMA
@@ -906,7 +932,7 @@ def _make_system_blocks(sheet, systems):
     sheet.auto_filter.ref = f"A9:A{max(9, current_row - 1)}"
     # Mantener el filtro de SISTEMA sin inmovilizar filas ni columnas.
     sheet.freeze_panes = None
-    sheet.print_area = f"A1:M{max(9, current_row - 1)}"
+    sheet.print_area = f"A1:N{max(9, current_row - 1)}"
 
 
 # Lee el analisis, filtra excepciones y llena las secciones de la plantilla final.

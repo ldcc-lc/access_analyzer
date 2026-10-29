@@ -107,6 +107,15 @@ def generar_reporte(resultado: dict, archivos: dict, salida: str | Path,
             _tabla(obs_temporales, encabezados_temporales,
                 [_fila_temporal(o, incluir_oficina)
                  for o in temporales])
+            # Resalta los cargos que participaron en la comparación, como en
+            # la planilla de usuarios temporales. Las celdas vacías quedan sin pintar.
+            for fila, observacion in enumerate(temporales, 2):
+                for columna, seleccionado in (
+                        (5, observacion.get("cargo_actual_seleccionado", False)),
+                        (6, observacion.get("cargo_designado_seleccionado", False))):
+                    if seleccionado:
+                        obs_temporales.cell(fila, columna).fill = PatternFill(
+                            "solid", fgColor="00FF00")
             _colorear_categorias(obs_temporales, temporales, fuente_personas)
         normales = [o for o in filas_sistema if o["categoria"] not in temporal_cats]
         _colorear_categorias(obs, normales, fuente_personas)

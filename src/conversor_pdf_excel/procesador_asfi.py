@@ -268,7 +268,6 @@ def convertir_pdf_a_excel(
         hoja.append([fila["Correo"], fila["Nombre"], fila["Rol"]])
 
     hoja.freeze_panes = "A2"
-    hoja.auto_filter.ref = hoja.dimensions
     hoja.column_dimensions["A"].width = 36
     hoja.column_dimensions["B"].width = 42
     hoja.column_dimensions["C"].width = 58
@@ -278,10 +277,38 @@ def convertir_pdf_a_excel(
             name="TableStyleMedium2",
             showFirstColumn=False,
             showLastColumn=False,
-            showRowStripes=True,
+            showRowStripes=False,
             showColumnStripes=False,
         )
         hoja.add_table(tabla)
+    else:
+        # Sin tabla no existe el autofiltro que esta suele aportar.
+        hoja.auto_filter.ref = hoja.dimensions
+
+    _aplicar_formato_roles(hoja)
 
     libro.save(destino)
     return destino
+
+
+def _aplicar_formato_roles(hoja) -> None:
+    """Mantiene encabezado azul y filtros, con filas blancas y bordes negros."""
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.worksheet.table import TableStyleInfo
+
+    borde = Side(style="thin", color="FF000000")
+    cuadricula = Border(left=borde, right=borde, top=borde, bottom=borde)
+    for row in hoja.iter_rows():
+        for cell in row:
+            cell.border = cuadricula
+            cell.alignment = Alignment(vertical="center", wrap_text=False)
+            if cell.row == 1:
+                cell.fill = PatternFill("solid", fgColor="FF1F4E78")
+                cell.font = Font(bold=True, color="FFFFFF")
+            else:
+                cell.fill = PatternFill("solid", fgColor="FFFFFFFF")
+    for tabla in hoja.tables.values():
+        tabla.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2", showFirstColumn=False,
+            showLastColumn=False, showRowStripes=False,
+            showColumnStripes=False)

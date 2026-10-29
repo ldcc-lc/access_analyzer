@@ -280,6 +280,9 @@ def _expectativa_temporal_externa(temporal, cargo_base, expected_by_cargo,
           and temporal.get("cargo_designado_pintado") and cargo_actual):
         cargos = [cargo_actual, cargo_designado]
         cargo_visible = f"(Actual) {cargo_actual}\n(Designado) {cargo_designado}"
+    elif temporal.get("cargo_actual_pintado"):
+        cargos = [cargo_actual] if cargo_actual else []
+        cargo_visible = cargo_actual
     else:
         cargos = [cargo_designado] if cargo_designado else []
         cargo_visible = cargo_designado
@@ -293,6 +296,23 @@ def _expectativa_temporal_externa(temporal, cargo_base, expected_by_cargo,
         return set(), cargo_visible, f"El cargo temporal aparece duplicado en la matriz {nombre_sistema}."
     expected = set().union(*(expected_by_cargo[key] for key in cargo_keys))
     return expected, cargo_visible, ""
+
+
+def _seleccion_cargos_temporales(temporal, cargo_base):
+    """Indica qué celdas de cargo se usaron, sin eliminar sus valores visibles."""
+    actual = (temporal.get("cargo_actual") or cargo_base or "").strip()
+    designado = (temporal.get("cargo_designado") or "").strip()
+    fecha_fin = temporal.get("fecha_fin", "")
+    vencido = bool(fecha_fin and date.today() > date.fromisoformat(fecha_fin))
+    actual_pintado = temporal.get("cargo_actual_pintado")
+    designado_pintado = temporal.get("cargo_designado_pintado")
+    if vencido:
+        return True, False
+    elif actual_pintado and designado_pintado and actual:
+        return True, True
+    elif actual_pintado:
+        return True, False
+    return False, True
 
 
 def analizar_sistema_externo(matriz: str | Path, salar: str | Path,
@@ -460,18 +480,18 @@ def analizar_sistema_externo(matriz: str | Path, salar: str | Path,
         if person is None:
             # No existe una identidad única ni en SALAR ni en Dominio.
             observation = _observacion_acceso_externo(
-                "Usuario Externo", user, None, "", found_with_unmapped,
-                "external", False,
+                "Usuario fuera de SALAR con acceso pendiente de retirar",
+                user, None, "", found_with_unmapped,
+                "both", False,
                 f"El correo de {nombre_sistema} no se encontró de forma única en SALAR ni Dominio.",
                 config=config_sistema)
-            if found_with_unmapped:
-                observaciones.append(observation)
+            observaciones.append(observation)
             detalle.append({**observation, "resultado": "Usuario externo; identidad no encontrada"})
             continue
 
         cargo_key = normalizar_cargo(person.cargo)
         cargo_en_matriz = cargo_key in expected_by_cargo
-        if not cargo_en_matriz:
+        if not cargo_en_matriz and not temporal_rows:
             if grupo_informe == "salar":
                 category = "Cargo sin correspondencia en matriz"
                 reason = f"El cargo SALAR no aparece en la matriz de {nombre_sistema}."
@@ -486,7 +506,7 @@ def analizar_sistema_externo(matriz: str | Path, salar: str | Path,
             detalle.append({**observation, "resultado": "Cargo sin correspondencia en matriz"})
             continue
 
-        if cargo_key in duplicate_cargos:
+        if cargo_key in duplicate_cargos and not temporal_rows:
             expected_duplicate = expected_by_cargo[cargo_key]
             observation = _observacion_acceso_externo(
                 "Duplicados o casos especiales", user, person, expected_duplicate,
@@ -498,8 +518,8 @@ def analizar_sistema_externo(matriz: str | Path, salar: str | Path,
                 "resultado": "No evaluable: cargo duplicado en matriz"})
             continue
 
-        expected = expected_by_cargo[cargo_key]
-        if unmapped:
+        expected = expected_by_cargo.get(cargo_key, set())
+        if unmapped and not temporal_rows:
             mismatch = _observacion_acceso_externo(
                 UNMATCHED_ROLE_CATEGORY, user, person, expected,
                 found_with_unmapped, grupo_informe, True,
@@ -516,9 +536,13 @@ def analizar_sistema_externo(matriz: str | Path, salar: str | Path,
                         "descripcion": f"El correo {user.correo!r} aparece varias veces en accesos temporales de {nombre_sistema}."})
                 else:
                     temporal = temporal_rows[0]
+                    actual_seleccionado, designado_seleccionado = (
+                        _seleccion_cargos_temporales(temporal, person.cargo))
                     temporal_mismatch = {**mismatch,
                         "cargo_actual": temporal["cargo_actual"],
                         "cargo_designado": temporal["cargo_designado"],
+                        "cargo_actual_seleccionado": actual_seleccionado,
+                        "cargo_designado_seleccionado": designado_seleccionado,
                         "fecha_inicio": temporal.get("fecha_inicio", ""),
                         "fecha_fin": temporal.get("fecha_fin", ""),
                         "resultado": "No evaluable: rol sin código",
@@ -540,37 +564,32 @@ def analizar_sistema_externo(matriz: str | Path, salar: str | Path,
             temporal = temporal_rows[0]
             vigencia_finalizada = bool(temporal.get("fecha_fin") and
                 date.today() > date.fromisoformat(temporal["fecha_fin"]))
-            if vigencia_finalizada:
-                cargos_temporales = [temporal["cargo_actual"]]
-                categoria_temporal = "Fin Acceso Temporal"
-            elif temporal.get("cargo_actual_pintado") and temporal.get("cargo_designado_pintado"):
-                cargos_temporales = [temporal["cargo_actual"], temporal["cargo_designado"]]
-                categoria_temporal = "Con Acceso Temporal"
+            categoria_temporal = ("Fin Acceso Temporal" if vigencia_finalizada
+                                  else "Con Acceso Temporal")
+            temporal_expected, cargo_temporal_visible, temporal_problem = (
+                _expectativa_temporal_externa(
+                    temporal, person.cargo, expected_by_cargo,
+                    duplicate_cargos, nombre_sistema))
+            actual_seleccionado, designado_seleccionado = (
+                _seleccion_cargos_temporales(temporal, person.cargo))
+            if unmapped:
+                temporal_missing, temporal_additional = [], []
             else:
-                cargos_temporales = [temporal["cargo_designado"]]
-                categoria_temporal = "Con Acceso Temporal"
-            claves_temporales = [normalizar_cargo(c) for c in cargos_temporales if c.strip()]
-            if not claves_temporales or any(k not in expected_by_cargo for k in claves_temporales):
-                temporal_expected = set()
-                temporal_problem = f"El cargo temporal no tiene correspondencia en la matriz de {nombre_sistema}."
-            elif any(k in duplicate_cargos for k in claves_temporales):
-                temporal_expected = set()
-                temporal_problem = f"El cargo temporal aparece duplicado en la matriz de {nombre_sistema}."
-            else:
-                temporal_expected = set().union(*(expected_by_cargo[k] for k in claves_temporales))
-                temporal_problem = ""
-            temporal_missing, temporal_additional = _diferencias_roles(
-                temporal_expected, role_candidates, config_sistema)
+                temporal_missing, temporal_additional = _diferencias_roles(
+                    temporal_expected, role_candidates, config_sistema)
             is_fin = categoria_temporal == "Fin Acceso Temporal"
             resultado_temporal = temporal_problem or (
+                "No evaluable: rol sin cÃ³digo" if unmapped else
                 "Diferencia de roles" if temporal_missing or temporal_additional else "Conforme")
             obs_temporal = {
                 "categoria": categoria_temporal, "correo": user.correo,
-                "nombre": person.nombre or user.nombre, "cargo": person.cargo,
+                "nombre": person.nombre or user.nombre, "cargo": cargo_temporal_visible,
                 "cargo_actual": temporal["cargo_actual"],
                 "cargo_designado": temporal["cargo_designado"],
+                "cargo_actual_seleccionado": actual_seleccionado,
+                "cargo_designado_seleccionado": designado_seleccionado,
                 "esperado": _roles_mostrables(temporal_expected, config_sistema),
-                "encontrado": _roles_mostrables(translated, config_sistema),
+                "encontrado": _roles_mostrables(found_with_unmapped, config_sistema),
                 "faltantes": sorted(temporal_missing),
                 "adicionales": sorted(temporal_additional),
                 "fecha_inicio": temporal.get("fecha_inicio", ""),

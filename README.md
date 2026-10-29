@@ -118,8 +118,11 @@ El análisis de Telefonía es independiente de las matrices de roles. Lee nombre
 - **Dar de Baja en Isabel**: una persona con interno no aparece en Dominio.
 - **Teléfono con diferente usuario**: ambas fuentes tienen el mismo número, pero los titulares no son equivalentes.
 - **Usuarios con doble interno Isabel**: una persona tiene más de un interno; las abreviaciones se agrupan cuando hay un único nombre completo candidato.
+- **Doble interno Dominio - Coincidencia exacta por nombre**: el nombre normalizado de Dominio coincide exactamente con uno de Isabel.
+- **Doble interno Dominio - Revision manual**: no hay una coincidencia exacta unica; se muestran posibles candidatos de Isabel cuando existen.
 - **Nombres Genéricos Isabel**: una etiqueta como un área o una agencia está cargada como titular; el número se usa para mostrar posibles titulares en Dominio.
 
+El Excel mantiene la hoja completa `Observaciones` y agrega las hojas `Coincidencia exacta` y `Revision manual`. La columna de categoria conserva motivos como doble interno Dominio, doble interno Isabel o dar de baja en Isabel. La hoja `Inventario completo` lista todos los grupos de ambas fuentes con su cruce, candidatos y filas de origen. En el inventario, los telefonos de Dominio ausentes en Isabel se anotan como `Dar de Alta en Isabel`; las identidades de Isabel sin candidato en Dominio como `Dar de Baja en Isabel`.
 Las columnas de nombre y teléfono son configurables. Por defecto, Dominio usa campos 1 y 11; Isabel/Internos, campos 1 y 2. El resultado es un Excel con la hoja `Observaciones`.
 
 ## Conversores PDF a Excel

@@ -483,14 +483,18 @@ def comparar(personas: list[Persona], cuentas: list[CuentaSistema], reglas: list
     if temporales_por_login:
         # Una fila temporal sustituye la observación ordinaria del mismo login,
         # para que quede agrupada en su categoría específica.
-        logins_sistema_temporales = {
-            normalizar_login_sistema(cuenta.login, config)
+        aliases_sistema_temporales = {
+            alias
             for key in temporales_por_login
             for cuenta in sistema_por_login.get(key, [])
+            for alias in _aliases_temporales(cuenta, config)
         }
         observaciones[:] = [o for o in observaciones
-                            if normalizar_login_sistema(o["login"], config)
-                            not in logins_sistema_temporales]
+            if not aliases_sistema_temporales.intersection(
+                _variantes_alias_temporal(o["login"], config))]
+        detalle[:] = [d for d in detalle
+            if not aliases_sistema_temporales.intersection(
+                _variantes_alias_temporal(d["login"], config))]
         # Evalúa vigencia, cargos esperados, roles/estado y oficina para cada acceso temporal.
         for key, temporal_rows in temporales_por_login.items():
             cuentas_rows = sistema_por_login.get(key, [])
@@ -508,9 +512,17 @@ def comparar(personas: list[Persona], cuentas: list[CuentaSistema], reglas: list
                 es_fin_temporal = bool(fin_vigencia and date.today() > fin_vigencia)
                 conservar_roles_actuales = (temporal.get("cargo_actual_pintado") and
                                              temporal.get("cargo_designado_pintado"))
-                cargos_roles = ([cargo_actual] if es_fin_temporal else
-                    [cargo_actual, cargo_designado] if conservar_roles_actuales
-                    else [cargo_designado])
+                cargo_actual_pintado = temporal.get("cargo_actual_pintado", False)
+                if es_fin_temporal:
+                    cargos_roles = [cargo_actual]
+                elif conservar_roles_actuales:
+                    cargos_roles = [cargo_actual, cargo_designado]
+                elif cargo_actual_pintado:
+                    cargos_roles = [cargo_actual]
+                else:
+                    # Si solo Cargo Designado está pintado, o ninguna celda
+                    # tiene relleno, se conserva el comportamiento de usarlo.
+                    cargos_roles = [cargo_designado]
                 segmentos_esperados = (_segmentos_esperados_temporales(
                     cargos_roles, reglas_por_cargo, roles_matrix, problemas_matrix, config)
                     if conservar_roles_actuales and not es_fin_temporal else None)
@@ -551,6 +563,8 @@ def comparar(personas: list[Persona], cuentas: list[CuentaSistema], reglas: list
                     motivo_temporal += " La vigencia terminó; se esperan únicamente los accesos del cargo de origen."
                 elif conservar_roles_actuales:
                     motivo_temporal += " Ambas celdas de cargo están pintadas; se conservan los roles actuales y se agregan los del cargo designado."
+                elif cargo_actual_pintado:
+                    motivo_temporal += " Solo Cargo Actual está pintado; se esperan los roles del cargo actual."
                 elif temporal.get("cargo_designado_pintado"):
                     motivo_temporal += " Solo Cargo Designado está pintado; se esperan los roles del cargo designado."
                 if temporal.get("fecha_inicio") or fecha_fin:
@@ -558,6 +572,13 @@ def comparar(personas: list[Persona], cuentas: list[CuentaSistema], reglas: list
                                         f" a {fecha_fin or 'sin fin'}.")
                 motivo_temporal += (f" Roles: {resultado_roles}; cargo del sistema: {resultado_cargo};"
                                     f" oficina del sistema: {resultado_oficina}.")
+                cargo_temporal_visible = " + ".join(
+                    cargo for cargo in cargos_roles if cargo)
+                detalle_temporal = _detalle(cuenta.login, nombre,
+                    cargo_temporal_visible, sistema, encontrado_temporal,
+                    resultado_roles)
+                detalle_temporal["esperados"] = expected_temporal
+                detalle.append(detalle_temporal)
                 observaciones.append(_obs(categoria_temporal, cuenta.login, nombre=nombre,
                     nombre_sistema=cuenta.nombre,
                     cargo=cargo_designado, sistema=sistema, esperado=expected_temporal,
@@ -567,6 +588,11 @@ def comparar(personas: list[Persona], cuentas: list[CuentaSistema], reglas: list
                     motivo=motivo_temporal, fecha_inicio=temporal.get("fecha_inicio", ""),
                     fecha_fin=fecha_fin,
                     cargo_designado=cargo_designado,
+                    cargo_actual_seleccionado=bool(
+                        es_fin_temporal or cargo_actual_pintado),
+                    cargo_designado_seleccionado=bool(
+                        not es_fin_temporal and (temporal.get("cargo_designado_pintado")
+                            or not cargo_actual_pintado)),
                     oficina_actual=temporal.get("oficina_actual", ""),
                     oficina_designada=temporal.get("oficina_designada", ""),
                     cargo_sistema=cuenta.cargo, oficina_sistema=cuenta.oficina,
@@ -745,6 +771,9 @@ def _expectativa_temporal_para_alta(persona, accesos_temporales,
             visible = "\n".join(part for part in (
                 f"(Actual) {cargo_actual}" if cargo_actual else "",
                 f"(Designado) {cargo_designado}" if cargo_designado else "") if part)
+        elif temporal.get("cargo_actual_pintado"):
+            seleccionados = [cargo_actual] if cargo_actual else []
+            visible = cargo_actual
         else:
             seleccionados = [cargo_designado] if cargo_designado else []
             visible = cargo_designado
@@ -1151,7 +1180,8 @@ def _obs(categoria, login, nombre="", cargo="", sistema="", esperado="", encontr
          fecha_fin="", cargo_designado="", oficina_actual="", oficina_designada="",
          cargo_sistema="", oficina_sistema="", resultado_roles="", resultado_cargo="",
          resultado_oficina="", oficina_salar="", gerencia_sistema="", gerencia_salar="",
-         esperado_temporal_segmentos=None, login_salar="", cargo_en_matriz=None):
+         esperado_temporal_segmentos=None, login_salar="", cargo_en_matriz=None,
+         cargo_actual_seleccionado=False, cargo_designado_seleccionado=False):
     # Estandariza observaciones con campos comunes y datos opcionales por categoría.
     return {"categoria": categoria, "login": login, "nombre": nombre, "cargo": cargo,
             "nombre_sistema": nombre_sistema, "login_salar": login_salar,
@@ -1166,5 +1196,7 @@ def _obs(categoria, login, nombre="", cargo="", sistema="", esperado="", encontr
             "resultado_roles": resultado_roles, "resultado_cargo": resultado_cargo,
             "resultado_oficina": resultado_oficina,
             "esperado_temporal_segmentos": esperado_temporal_segmentos,
+            "cargo_actual_seleccionado": cargo_actual_seleccionado,
+            "cargo_designado_seleccionado": cargo_designado_seleccionado,
             "oficina_salar": oficina_salar, "gerencia_sistema": gerencia_sistema,
             "gerencia_salar": gerencia_salar, "cargo_en_matriz": cargo_en_matriz}

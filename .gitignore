@@ -11,3 +11,4 @@ data/salida/*
 !data/salida/.gitkeep
 documentos base/
 RESUMEN.md
+scripts/

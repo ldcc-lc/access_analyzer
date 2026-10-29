@@ -88,7 +88,7 @@ UPDATES = {
         "desc": "Por cada sistema, lee las cuentas filtradas, compara con SALAR y Dominio por la clave configurada, consulta la matriz por cargo, revisa altas pendientes y trata accesos temporales.",
         "footer_y": 1250,
         "output": (
-            "Excel de análisis: resumen, observaciones por sistema, detalle, errores y hoja temporal cuando corresponde.",
+            "Excel: resumen, observaciones, detalle, errores y hoja Temporal con Actual/Designado conservados; verde marca el cargo evaluado.",
             "Correo «Null» en SALAR/Dominio equivale a vacío; con cargo de Dominio en matriz se compara el acceso y sin identidad se revisa el retiro.",
         ),
         "text": {
@@ -128,7 +128,7 @@ UPDATES = {
         "desc": "ASFI agrupa roles por correo, traduce los valores del TXT con Codigos D a C, consulta los accesos esperados en matriz H y contrasta cuentas y altas con SALAR y Dominio.",
         "footer_y": 1210,
         "output": (
-            "Excel de análisis: Observaciones ASFI, Temporal ASFI, detalle y errores; puede generarse solo con ASFI, sin TXT internos.",
+            "Excel ASFI: Temporal conserva Actual y Designado; verde marca el cargo evaluado y el informe muestra la etiqueta seleccionada.",
             "Correo «Null» equivale a vacío: SALAR puede obtenerlo por nombre único en Dominio; sin correo de Dominio no se genera alta por correo.",
         ),
         "text": {
@@ -160,7 +160,7 @@ UPDATES = {
         "desc": "INFOCRED excluye solo BAJA, agrupa roles por correo, traduce el TXT con Codigos B a C, consulta la matriz P y compara con SALAR, Dominio y accesos temporales.",
         "footer_y": 1210,
         "output": (
-            "Excel de análisis: Observaciones INFOCRED, Temporal INFOCRED, detalle y errores; puede generarse solo con INFOCRED.",
+            "Excel INFOCRED: Temporal conserva Actual y Designado; verde marca el cargo evaluado y el informe muestra la etiqueta seleccionada.",
             "Solo BAJA se excluye; «Null» en correo equivale a vacío. Sin correo de Dominio no se busca alta; un rol sin código requiere revisión.",
         ),
         "text": {
@@ -194,8 +194,8 @@ UPDATES = {
         "desc": "Concilia SALAR con Dominio por login y correo únicos, usa nombre único solo cuando SALAR no tiene correo, compara datos laborales y revisa temporales e historial opcionales.",
         "footer_y": 1255,
         "output": (
-            "Excel de análisis: Comparación SALAR-Dominio, detalle y errores; hojas Temporal e Historial cuando se cargan esos archivos.",
-            "Correo «Null» equivale a ausente; un Dominio sin pareja se marca externo y su cargo en matriz permite separarlo en el informe.",
+            "Excel: compara cargo/oficina SALAR-Dominio y aplica asignaciones temporales; incluye detalle e historial opcional.",
+            "Las temporales generan Conforme/Diferencia de cargo u oficina; no comparan roles de sistemas contra la matriz.",
         ),
         "text": {
             (900, 69): "Conciliar login → correo → nombre único si falta correo SALAR; luego comparar datos laborales",
@@ -216,10 +216,10 @@ UPDATES = {
         },
     },
     "flujo_analisis_telefonia.svg": {
-        "desc": "Compara por número y por nombre el directorio de Dominio con los internos Isabel; informa números faltantes, titulares diferentes, nombres genéricos, dobles internos y posibles bajas.",
+        "desc": "Compara Dominio e Isabel por nombres y números; separa dobles internos de Dominio entre coincidencia exacta y revision manual.",
         "footer_y": 1240,
         "output": (
-            "Excel con hoja Observaciones: categoría, nombre y teléfono de Dominio, nombre y teléfono de Isabel.",
+            "Excel Telefonia: inventario completo con altas de Dominio ausentes en Isabel y bajas sin candidato en Dominio.",
             "Las altas se detectan por número ausente en Isabel; las bajas por persona de Isabel sin nombre equivalente en Dominio.",
         ),
         "remove_paths": ["M1390 476 H1430"],
@@ -237,7 +237,7 @@ UPDATES = {
         "desc": "Lee el análisis de al menos un sistema interno, ASFI o INFOCRED, con las hojas de SALAR-Dominio y temporales cuando corresponden; clasifica tipos, filtra excepciones exactas y llena los reportes de la plantilla.",
         "footer_y": 1260,
         "output": (
-            "Excel final: abre en Reporte Salar-Matriz, con pestañas desde el inicio; incluye Dominio-Matriz, listados y Errores de carga.",
+            "Excel final: incluye Nombre entre Usuario y Cargo/s; las filas temporales etiquetan solo los cargos marcados en verde.",
             "Bajas: cuenta sin persona en SALAR ni Dominio o posible baja histórica; Dominio con matriz genera Altas/Roles según acceso esperado.",
         ),
         "remove_paths": ["M1385 750 H1430", "M1385 845 H1405 V830 H1430"],
@@ -262,7 +262,7 @@ UPDATES = {
         "desc": "Extrae texto del PDF ASFI por coordenadas, identifica usuarios por correo, obtiene nombres y roles sin catálogo cerrado, y crea una fila Excel por rol o una fila vacía si no hay roles.",
         "footer_y": 1195,
         "output": (
-            "Excel «Roles ASFI»: Correo, Nombre y Rol. Cada rol genera una fila; usuarios sin roles conservan una fila vacía.",
+            "Excel «Roles ASFI»: Correo, Nombre y Rol, filtro y encabezado azul; filas blancas con bordes negros.",
             "La interfaz primero genera el archivo temporal, después pide ubicación para guardarlo y limpia la selección al terminar.",
         ),
         "text": {

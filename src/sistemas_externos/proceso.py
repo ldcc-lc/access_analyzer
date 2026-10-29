@@ -165,6 +165,16 @@ def _agregar_sistema_externo_al_reporte(
             "categoria", "correo", "nombre", "cargo", "cargo_actual",
             "cargo_designado", "esperado", "encontrado", "fecha_inicio",
             "fecha_fin", "resultado", "grupo_informe", "cargo_en_matriz"))
+        # Marca en verde los cargos seleccionados para la revisión. No interviene
+        # en el resultado: es una ayuda visual equivalente al Excel de entrada.
+        sheet_temporal = workbook[temporal_sheet]
+        for row, item in enumerate(resultado["observaciones_temporales"], 2):
+            for column, selected in (
+                    (5, item.get("cargo_actual_seleccionado", False)),
+                    (6, item.get("cargo_designado_seleccionado", False))):
+                if selected:
+                    sheet_temporal.cell(row, column).fill = PatternFill(
+                        "solid", fgColor="00FF00")
 
         for sheet_name in (observaciones_sheet, temporal_sheet):
             sheet = workbook[sheet_name]
